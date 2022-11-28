@@ -1,4 +1,5 @@
 echo ---    Windows 11 x64 Oracle 19.16 Instant Client Installation   ---
+REM Author : Mahmut Deniz
 REM Oracle Clients Links Adress :  https://www.oracle.com/co/database/technologies/instant-client/winx64-64-downloads.html
 REM Save as OracleInstantClientInstall.bat
 echo off
