@@ -1,23 +1,19 @@
-##################################################################################
-#   		 		RMAN BACKUP SCRIPT		       	          
-# Author 	: Mahmut Deniz
-# Purpose 	: Single parametric Oracle RMAN backup script which mail result
-# Usage		: ./RMAN.sh full
-##################################################################################
+###################################################
+###		 RMAN BACKUP SCRIPT		###
+###################################################
 #!/bin/sh
-# First Load Linux Oracle Profile for Enviroment Variables
 ScriptFileName=`basename ${0}`
+# First Load Linux Oracle Profile for Enviroment Variables
 . /home/oracle/.oracle_profile
 tarih=`date +%Y_%m_%d`
 tarihsaat=`date +%Y_%m_%d_%H%M`
 command_id=$tarihsaat
 # Change 5 variables for using
-FROM=server@domain.com
-TO=dba@domain.com
+FROM=test@yok.gov.tr
+TO=dba@yok.gov.tr
 dizin="/backup/RMAN"
 logdizin="/backup/RMAN/logs"
-logfile="$logdizin/rman_$1_$tarihsaat.log"
-
+logfile="$logdizin/rman_$Type_$tarihsaat.log"
 # Script
 mkdir -p $logdizin
 
@@ -27,17 +23,31 @@ Help()
    echo "         RMAN BACKUP SCRIPT"
    echo "----------------------------------------"
    echo
-   echo " Syntax : ./$ScriptFileName Type"
+   echo " Syntax : ./$ScriptFileName Type [Day]" 
    echo
    echo " Type :"
    echo
-   echo "  full     Full Backup"
-   echo "  incr     Incremental Differential Backup"
-   echo "  arch     Archivelog Backup"
+   echo "  full     		Full Backup"
+   echo "  incr     		Incremental Differential Backup"
+   echo "  arch     		Archivelog Backup"
+   echo "  del [day count]    	Archivelog Delete Until Sysdate - Days"
    echo
    echo "----------------------------------------"
    echo
 }
+
+if [ -z "$1" ]; then  # do something if argument is empty
+  Help
+  exit 1 
+else
+  Type=$1
+fi
+
+if [ -z "$2" ]; then
+  Day=0
+else
+  Day=$2
+fi
 
 FullBackup(){
 FullFormat=$dizin/%d_%T_%s
@@ -48,6 +58,8 @@ run
 {
 sql 'alter system archive log current';
 SET COMMAND ID TO '$command_id';
+CONFIGURE DEVICE TYPE DISK PARALLELISM 24;
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/RMAN/FULL_%d_%T_%s';
 SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F';
 BACKUP AS COMPRESSED BACKUPSET INCREMENTAL LEVEL 0 DATABASE PLUS ARCHIVELOG FORMAT '$FullFormat' DELETE INPUT;
 CROSSCHECK BACKUP;
@@ -71,7 +83,8 @@ run
 sql 'alter system archive log current';
 SET COMMAND ID TO '$command_id';
 CONFIGURE DEVICE TYPE DISK PARALLELISM 16;
-SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F'; 
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/RMAN/INCR_%d_%T_%s';
+SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F';
 BACKUP AS COMPRESSED BACKUPSET INCREMENTAL LEVEL 1 DATABASE PLUS ARCHIVELOG FORMAT '$IncrementalFormat';
 CROSSCHECK BACKUP;
 CROSSCHECK ARCHIVELOG ALL;
@@ -93,8 +106,21 @@ run
 sql 'alter system archive log current';
 SET COMMAND ID TO '$command_id';
 CONFIGURE DEVICE TYPE DISK PARALLELISM 1;
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/RMAN/ARCH_%d_%T_%s';
 SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F'; 
 BACKUP AS COMPRESSED BACKUPSET ARCHIVELOG ALL FORMAT '$ArchiveFormat';
+}
+EOF
+}
+
+ArchiveLogDelete(){
+rman << EOF
+connect target /
+set echo on;
+run
+{
+sql 'alter system archive log current';
+delete noprompt archivelog until time 'sysdate-$Day';
 }
 EOF
 }
@@ -128,22 +154,30 @@ fi
 
 }
 # Option Backup Type
-case "$1" in
-    "full") 
+case "$Type" in
+    "full")
+	echo "starting full backup  "
 	FullBackup
 	SendRmanBackupStatusAsMail
 	exit 0
    ;;
-    "incr") 
+    "incr")
+	echo "starting incremental backup  "
 	IncrementalBackup
 	SendRmanBackupStatusAsMail
 	exit 0
    ;;
     "arch") 
+	echo "starting archivelog backup  "
 	ArchiveLogBackup
 	exit 0
    ;;
-   *)  
+    "del") 
+	echo "deleting archivelogs until time sysdate - "$Day"  "
+	ArchiveLogDelete
+	exit 0
+   ;;
+   *)
 	Help
     	exit 1 # Command to come out of the program with status 1
    ;;
