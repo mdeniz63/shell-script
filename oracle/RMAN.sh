@@ -1,5 +1,6 @@
 ###################################################
-###		 RMAN BACKUP SCRIPT		###
+#		 RMAN BACKUP SCRIPT		  #
+#                   Mahmut Deniz                  #
 ###################################################
 #!/bin/sh
 ScriptFileName=`basename ${0}`
