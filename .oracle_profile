@@ -1,0 +1,66 @@
+# Login as Oracle User
+# Save as .oracle_profile and add to .bash_profile empty line as ". .oracle_profile"
+
+export PATH_ORG=$PATH:$HOME/bin
+ORACLE_HOSTNAME=<HOSTNAME>; export ORACLE_HOSTNAME
+WELCOME_MESSAGE() {
+        echo "To Switch Other Database Environments"
+        echo "-----------------------------------------------------------------"
+        echo "For ASM   --> asm"
+        echo "For DB    --> db"
+        echo ""
+        echo "Current Environment Settings"
+        echo "-----------------------------------------------------------------"
+        echo ORACLE_HOME = $ORACLE_HOME
+        echo ORACLE_SID  = $ORACLE_SID
+        echo ""
+}
+
+alias sql="clear; rlwrap sqlplus / as sysdba"
+alias sqla="clear; rlwrap sqlplus / as sysasm"
+alias sqlplus="rlwrap sqlplus"
+alias lsnrctl="rlwrap lsnrctl"
+alias asmcmd="rlwrap asmcmd"
+alias adrci="rlwrap adrci"
+alias rman="rlwrap rman"
+alias c="clear;WELCOME_MESSAGE"
+
+runalias (){
+        alias sid="echo $ORACLE_SID"
+        alias home="echo $ORACLE_HOME"
+        alias oh="cd $ORACLE_HOME"
+        alias rmant="rman target /"
+        alias tns="cd $TNS_ADMIN"
+        alias tailx='tail -100f $ALERT_FILE'
+        alias vix='vi $ALERT_FILE'
+}
+
+asm (){
+	# Enviroments for asm
+        ORACLE_UNQNAME=+ASM; export ORACLE_UNQNAME
+        ORACLE_SID=+ASM; export ORACLE_SID
+        ORACLE_HOME=/u01/app/19.0.0/grid; export ORACLE_HOME
+	ALERT_FILE=/u01/app/oracle/diag/asm/+asm/+ASM/trace/alert_+ASM.log ; export ALERT_FILE
+        export PATH=$ORACLE_HOME/bin:$ORACLE_HOME/OPatch:$PATH_ORG
+        runalias
+        clear
+        WELCOME_MESSAGE
+}
+
+
+db () {
+	# Enviroments for db
+	ORACLE_UNQNAME=<SID>; export ORACLE_UNQNAME
+	ORACLE_SID=<SID>; export ORACLE_SID
+	ORACLE_HOME=/u01/app/oracle/product/19.0.0/dbhome_1; export ORACLE_HOME	
+	ALERT_FILE=/u01/app/oracle/diag/rdbms/<SID>/<SID>/trace/alert_<SID>.log ; export ALERT_FILE
+	export PATH=$ORACLE_HOME/bin:$ORACLE_HOME/OPatch:$PATH_ORG
+        runalias
+        clear
+        WELCOME_MESSAGE
+}
+
+alias c="clear;WELCOME_MESSAGE"
+umask 022
+# Start db profile
+db
