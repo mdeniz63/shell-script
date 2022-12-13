@@ -1,3 +1,5 @@
+# rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+# yum install rlwrap
 # Login as Oracle User
 # Save as .oracle_profile and add to .bash_profile empty line as ". .oracle_profile"
 
