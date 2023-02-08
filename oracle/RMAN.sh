@@ -10,8 +10,8 @@ tarih=`date +%Y_%m_%d`
 tarihsaat=`date +%Y_%m_%d_%H%M`
 command_id=$tarihsaat
 # Change 5 variables for using
-FROM=test@yok.gov.tr
-TO=dba@yok.gov.tr
+FROM=test@domain.com.tr
+TO=dba@domain.com.tr
 dizin="/backup/RMAN"
 logdizin="/backup/RMAN/logs"
 logfile="$logdizin/rman_$Type_$tarihsaat.log"
@@ -147,6 +147,7 @@ BackupTime=$(RunSQL "$BackupTimeQuery")
 BackupSize=$(RunSQL "$BackupSizeQuery")
 MailText="Elapsed Time :\t $BackupTime  \nBackup Size :\t $BackupSize \n\n$BackupType RMAN BACKUP $BackupStatus"
 
+# Send mail with mailx command if completed only status if not completed successfully send status and log file.
 if [ "$BackupStatus" = "COMPLETED" ]; then
     echo -e $MailText | mailx -r $FROM -s "$BackupStatus"  $TO
 else
