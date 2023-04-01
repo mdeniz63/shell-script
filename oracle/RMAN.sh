@@ -1,6 +1,5 @@
 ###################################################
-#		 RMAN BACKUP SCRIPT		  #
-#                   Mahmut Deniz                  #
+###		 RMAN BACKUP SCRIPT		###
 ###################################################
 #!/bin/sh
 ScriptFileName=`basename ${0}`
@@ -8,15 +7,20 @@ ScriptFileName=`basename ${0}`
 . /home/oracle/.oracle_profile
 tarih=`date +%Y_%m_%d`
 tarihsaat=`date +%Y_%m_%d_%H%M`
+
+# Change variables below for using
+FROM=test@domain.com
+TO=dba@domain.com
 command_id=$tarihsaat
-# Change 5 variables for using
-FROM=test@domain.com.tr
-TO=dba@domain.com.tr
-dizin="/backup/RMAN"
-logdizin="/backup/RMAN/logs"
-logfile="$logdizin/rman_$Type_$tarihsaat.log"
-# Script
-mkdir -p $logdizin
+dizin="/backup/RMAN/"
+BackupFolder="$dizin/$tarih"
+ControlFilesFolder="$dizin/ControlFiles"
+LogFolder="$dizin/logs"
+logfile="$LogFolder/rman_$1_$tarihsaat.log"
+FormatFull="$BackupFolder/FULL_%d_%T_%s"
+FormatIncr="$BackupFolder/incr_%d_%T_%s"
+FormatArch="$BackupFolder/arch_%d_%T_%s"
+
 
 Help()
 {
@@ -31,6 +35,7 @@ Help()
    echo "  full     		Full Backup"
    echo "  incr     		Incremental Differential Backup"
    echo "  arch     		Archivelog Backup"
+   echo "  cros     		Crosscheck And Delete Expired"
    echo "  del [day count]    	Archivelog Delete Until Sysdate - Days"
    echo
    echo "----------------------------------------"
@@ -50,8 +55,10 @@ else
   Day=$2
 fi
 
+# Script
+mkdir -p {"$BackupFolder","$LogFolder","$ControlFilesFolder"}
+
 FullBackup(){
-FullFormat=$dizin/%d_%T_%s
 rman log=$logfile << EOF
 connect target /
 set echo on;
@@ -59,23 +66,16 @@ run
 {
 sql 'alter system archive log current';
 SET COMMAND ID TO '$command_id';
-CONFIGURE DEVICE TYPE DISK PARALLELISM 24;
-CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/RMAN/FULL_%d_%T_%s';
-SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F';
-BACKUP AS COMPRESSED BACKUPSET INCREMENTAL LEVEL 0 DATABASE PLUS ARCHIVELOG FORMAT '$FullFormat' DELETE INPUT;
-CROSSCHECK BACKUP;
-CROSSCHECK ARCHIVELOG ALL;
-CROSSCHECK BACKUPSET;
-DELETE NOPROMPT OBSOLETE;
-DELETE NOPROMPT EXPIRED BACKUP;
-DELETE NOPROMPT EXPIRED ARCHIVELOG ALL;
-DELETE NOPROMPT EXPIRED BACKUPSET;
+CONFIGURE DEVICE TYPE DISK PARALLELISM 32;
+CONFIGURE CHANNEL DEVICE TYPE DISK MAXPIECESIZE 32G;
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '$FormatFull';
+SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$ControlFilesFolder/cf_%F';
+BACKUP AS COMPRESSED BACKUPSET INCREMENTAL LEVEL 0 DATABASE PLUS ARCHIVELOG FORMAT '$FormatFull' DELETE INPUT;
 }
 EOF
 }
 
 IncrementalBackup(){
-IncrementalFormat=$dizin/INCR_%d_%T_%s
 rman log=$logfile << EOF
 connect target /
 set echo on;
@@ -84,21 +84,15 @@ run
 sql 'alter system archive log current';
 SET COMMAND ID TO '$command_id';
 CONFIGURE DEVICE TYPE DISK PARALLELISM 16;
-CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/RMAN/INCR_%d_%T_%s';
-SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F';
-BACKUP AS COMPRESSED BACKUPSET INCREMENTAL LEVEL 1 DATABASE PLUS ARCHIVELOG FORMAT '$IncrementalFormat';
-CROSSCHECK BACKUP;
-CROSSCHECK ARCHIVELOG ALL;
-CROSSCHECK BACKUPSET;
-DELETE NOPROMPT OBSOLETE;
-DELETE NOPROMPT EXPIRED BACKUP;
-DELETE NOPROMPT EXPIRED BACKUPSET;
+CONFIGURE CHANNEL DEVICE TYPE DISK MAXPIECESIZE 32G;
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '$FormatIncr';
+SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$ControlFilesFolder/cf_%F'; 
+BACKUP AS COMPRESSED BACKUPSET INCREMENTAL LEVEL 1 DATABASE PLUS ARCHIVELOG FORMAT '$FormatIncr' DELETE INPUT;
 }
 EOF
 }
 
 ArchiveLogBackup(){
-ArchiveFormat=$dizin/ARCH_%d_%T_%s
 rman log=$logfile << EOF
 connect target /
 set echo on;
@@ -106,16 +100,10 @@ run
 {
 sql 'alter system archive log current';
 SET COMMAND ID TO '$command_id';
-CONFIGURE DEVICE TYPE DISK PARALLELISM 1;
-CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/RMAN/ARCH_%d_%T_%s';
-SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$dizin/cf_%F'; 
-BACKUP AS COMPRESSED BACKUPSET ARCHIVELOG ALL FORMAT '$ArchiveFormat';
-CROSSCHECK BACKUP;
-CROSSCHECK ARCHIVELOG ALL;
-CROSSCHECK BACKUPSET;
-DELETE NOPROMPT OBSOLETE;
-DELETE NOPROMPT EXPIRED BACKUP;
-DELETE NOPROMPT EXPIRED BACKUPSET;
+CONFIGURE DEVICE TYPE DISK PARALLELISM 2;
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '$FormatArch';
+SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$ControlFilesFolder/cf_%F'; 
+BACKUP AS COMPRESSED BACKUPSET ARCHIVELOG ALL FORMAT '$FormatArch';
 }
 EOF
 }
@@ -123,11 +111,28 @@ EOF
 ArchiveLogDelete(){
 rman << EOF
 connect target /
-set echo on;
+set echo off;
 run
 {
 sql 'alter system archive log current';
-delete noprompt archivelog until time 'sysdate-$Day';
+delete noprompt archivelog until time 'sysdate'-$Day;
+}
+EOF
+}
+
+CrosschekAndDeleteExpired(){
+rman << EOF
+connect target /
+set echo on;
+run
+{
+CROSSCHECK BACKUP;
+CROSSCHECK ARCHIVELOG ALL;
+CROSSCHECK BACKUPSET;
+DELETE NOPROMPT OBSOLETE;
+DELETE NOPROMPT EXPIRED BACKUP;
+DELETE NOPROMPT EXPIRED ARCHIVELOG ALL;
+DELETE NOPROMPT EXPIRED BACKUPSET;
 }
 EOF
 }
@@ -153,7 +158,6 @@ BackupTime=$(RunSQL "$BackupTimeQuery")
 BackupSize=$(RunSQL "$BackupSizeQuery")
 MailText="Elapsed Time :\t $BackupTime  \nBackup Size :\t $BackupSize \n\n$BackupType RMAN BACKUP $BackupStatus"
 
-# Send mail with mailx command if completed only status if not completed successfully send status and log file.
 if [ "$BackupStatus" = "COMPLETED" ]; then
     echo -e $MailText | mailx -r $FROM -s "$BackupStatus"  $TO
 else
@@ -166,23 +170,29 @@ case "$Type" in
     "full")
 	echo "starting full backup  "
 	FullBackup
+	CrosschekAndDeleteExpired
 	SendRmanBackupStatusAsMail
 	exit 0
    ;;
     "incr")
 	echo "starting incremental backup  "
 	IncrementalBackup
+	CrosschekAndDeleteExpired
 	SendRmanBackupStatusAsMail
 	exit 0
    ;;
     "arch") 
 	echo "starting archivelog backup  "
 	ArchiveLogBackup
+	CrosschekAndDeleteExpired
 	exit 0
    ;;
     "del") 
 	echo "deleting archivelogs until time sysdate - "$Day"  "
-	ArchiveLogDelete
+	exit 0
+   ;;
+    "cross") 
+	CrosschekAndDeleteExpired
 	exit 0
    ;;
    *)
