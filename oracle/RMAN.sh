@@ -115,7 +115,7 @@ set echo off;
 run
 {
 sql 'alter system archive log current';
-delete noprompt archivelog until time 'sysdate'-$Day;
+delete noprompt archivelog until time 'sysdate -$Day';
 }
 EOF
 }
